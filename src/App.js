@@ -1,88 +1,170 @@
-import { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
 import "./App.css";
-import Item from "./components/Item";
+import confetti from "canvas-confetti";
+import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
+import LightModeIcon from "@mui/icons-material/LightMode";
+import DarkModeIcon from "@mui/icons-material/DarkMode";
+import { grey } from "@mui/material/colors";
 
 function App() {
   const [input, setInput] = useState("");
-  const [doArr, setDoArr] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [darkMode, setDarkMode] = useState(false);
+  const [showAddAnimation, setShowAddAnimation] = useState(false);
+
+  useEffect(() => {
+    const savedTasks = JSON.parse(localStorage.getItem("tasks")) || [];
+    setTasks(savedTasks);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("tasks", JSON.stringify(tasks));
+    if (tasks.every((task) => task.completed)) {
+      triggerConfetti();
+    }
+  }, [tasks]);
 
   function handleChange(ev) {
     setInput(ev.target.value);
   }
 
-  function handleClick() {
-    input.length &&
-      setDoArr((prevItems) => {
-        return [...prevItems, input];
-      });
-    setInput("");
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (input.trim()) {
+      setTasks((prevTasks) => [
+        ...prevTasks,
+        { id: Date.now(), text: input, completed: false },
+      ]);
+      setInput("");
+      setShowAddAnimation(true);
+      setTimeout(() => setShowAddAnimation(false), 500);
+    }
   }
 
-  function clearDone() {
-    setDoArr([]);
+  function toggleComplete(id) {
+    setTasks((prevTasks) =>
+      prevTasks.map((task) =>
+        task.id === id ? { ...task, completed: !task.completed } : task
+      )
+    );
+  }
+
+  function editTask(id, newText) {
+    setTasks((prevTasks) =>
+      prevTasks.map((task) =>
+        task.id === id ? { ...task, text: newText } : task
+      )
+    );
+  }
+
+  function deleteTask(id) {
+    setTasks((prevTasks) => prevTasks.filter((task) => task.id !== id));
+  }
+
+  function clearCompleted() {
+    setTasks((prevTasks) => prevTasks.filter((task) => !task.completed));
+  }
+
+  function onDragEnd(result) {
+    if (!result.destination) return;
+    const items = Array.from(tasks);
+    const [reorderedItem] = items.splice(result.source.index, 1);
+    items.splice(result.destination.index, 0, reorderedItem);
+    setTasks(items);
+  }
+
+  function triggerConfetti() {
+    confetti({
+      particleCount: 100,
+      spread: 70,
+      origin: { y: 0.6 },
+    });
   }
 
   return (
-    <div className="container">
+    <div className={`container ${darkMode ? "dark-mode" : ""}`}>
       <div className="heading">
         <h1>To-Do List</h1>
-      </div>
-      <div className="form">
-        <input value={input} onChange={handleChange} type="text" />
-        <button onClick={handleClick}>
-          <span>Add</span>
+        <button onClick={() => setDarkMode(!darkMode)} className="mode-toggle">
+          {darkMode ? (
+            <LightModeIcon sx={{ color: grey[50] }} />
+          ) : (
+            <DarkModeIcon />
+          )}
         </button>
       </div>
-      {doArr.length > 0 && (
-        <div onClick={clearDone} className="clearBtn">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            class="lucide lucide-eraser"
-          >
-            <path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21" />
-            <path d="M22 21H7" />
-            <path d="m5 11 9 9" />
-          </svg>
-        </div>
+      <form onSubmit={handleSubmit} className="form">
+        <input
+          value={input}
+          onChange={handleChange}
+          type="text"
+          placeholder="Add a new task..."
+        />
+        <button type="submit" className={showAddAnimation ? "animate-add" : ""}>
+          <span>Add</span>
+        </button>
+      </form>
+      <DragDropContext onDragEnd={onDragEnd}>
+        <Droppable droppableId="tasks">
+          {(provided) => (
+            <ul
+              {...provided.droppableProps}
+              ref={provided.innerRef}
+              className="task-list"
+            >
+              {tasks.map((task, index) => (
+                <Draggable
+                  key={task.id}
+                  draggableId={task.id.toString()}
+                  index={index}
+                >
+                  {(provided, snapshot) => (
+                    <li
+                      ref={provided.innerRef}
+                      {...provided.draggableProps}
+                      {...provided.dragHandleProps}
+                      className={`task-item ${
+                        task.completed ? "completed" : ""
+                      } ${snapshot.isDragging ? "dragging" : ""}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={task.completed}
+                        onChange={() => toggleComplete(task.id)}
+                      />
+                      <span
+                        onDoubleClick={() => {
+                          const newText = prompt("Edit task:", task.text);
+                          if (newText) editTask(task.id, newText);
+                        }}
+                      >
+                        {task.text}
+                      </span>
+                      <button
+                        onClick={() => deleteTask(task.id)}
+                        className="delete-btn"
+                      >
+                        ❌
+                      </button>
+                    </li>
+                  )}
+                </Draggable>
+              ))}
+              {provided.placeholder}
+            </ul>
+          )}
+        </Droppable>
+      </DragDropContext>
+      {tasks.length > 0 && (
+        <button onClick={clearCompleted} className="clear-btn">
+          Clear Completed
+        </button>
       )}
-      <div className="toDoList">
-        <ul>
-          {doArr.map((toDoItem, index) => (
-            <Item key={index} toDo={toDoItem} />
-          ))}
-        </ul>
-        <div className="eraser"></div>
-      </div>
-      {doArr.length === 0 && (
-        <div style={{ marginTop: "50px" }}>
-          <p style={{ fontSize: "1.5rem" }}>Well Done !</p>
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            class="lucide lucide-trophy"
-          >
-            <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
-            <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
-            <path d="M4 22h16" />
-            <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
-            <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
-            <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
-          </svg>
+      {tasks.length === 0 && (
+        <div className="empty-state">
+          <p>Well Done! All tasks completed.</p>
+          <EmojiEventsIcon fontSize="large" />
         </div>
       )}
     </div>
